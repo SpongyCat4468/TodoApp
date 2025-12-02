@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -36,7 +38,7 @@ fun EditTodoDialog(
     var title by remember { mutableStateOf(todoItem.title) }
     var description by remember { mutableStateOf(todoItem.description) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var selectedTime by remember { mutableStateOf(todoItem.notificationTime) }
+    var selectedTimes by remember { mutableStateOf(todoItem.notificationTimes) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -76,40 +78,72 @@ fun EditTodoDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                // Display notification times
+                if (selectedTimes.isNotEmpty()) {
                     Text(
-                        text = if (selectedTime != null) {
-                            "提醒時間: ${formatNotificationTime(selectedTime!!)}"
-                        } else {
-                            "沒有提醒時間"
-                        },
+                        text = "提醒時間:",
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    selectedTimes.sortedBy { it }.forEach { time ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = formatNotificationTime(time),
+                                fontSize = 14.sp,
+                                color = Color(0xFFB0B0B0)
+                            )
+                            IconButton(
+                                onClick = {
+                                    selectedTimes = selectedTimes.filter { it != time }
+                                }
+                            ) {
+                                Text (
+                                    text = "x",
+                                    fontSize = 24.sp
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                } else {
+                    Text(
+                        text = "沒有提醒時間",
                         fontSize = 14.sp,
                         color = Color(0xFFB0B0B0),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    Button(
-                        onClick = { showTimePicker = true },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF6200EE),
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("設定時間")
-                    }
                 }
 
-                if (selectedTime != null) {
+                // Add notification button
+                Button(
+                    onClick = { showTimePicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF6200EE),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("新增提醒時間")
+                }
+
+                // Clear all notifications button
+                if (selectedTimes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
                     TextButton(
-                        onClick = { selectedTime = null },
+                        onClick = { selectedTimes = emptyList() },
+                        modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.textButtonColors(
-                            contentColor = Color(0xFF03DAC6)
+                            contentColor = Color(0xFFFF6B6B)
                         )
                     ) {
-                        Text("清除提醒")
+                        Text("清除所有提醒")
                     }
                 }
 
@@ -135,7 +169,7 @@ fun EditTodoDialog(
                         val updatedItem = todoItem.copy(
                             title = title,
                             description = description,
-                            notificationTime = selectedTime
+                            notificationTimes = selectedTimes
                         )
                         onSave(updatedItem)
                     }
@@ -170,7 +204,10 @@ fun EditTodoDialog(
         TimePickerDialog(
             onDismiss = { showTimePicker = false },
             onTimeSelected = { timeInMillis ->
-                selectedTime = timeInMillis
+                // Add new time only if it's not already in the list
+                if (!selectedTimes.contains(timeInMillis)) {
+                    selectedTimes = selectedTimes + timeInMillis
+                }
                 showTimePicker = false
             }
         )

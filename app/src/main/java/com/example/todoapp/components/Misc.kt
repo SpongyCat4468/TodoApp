@@ -64,7 +64,7 @@ fun EmptyText() {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "(Empty)",
+                text = "(無)",
                 color = Color.Gray
             )
         }

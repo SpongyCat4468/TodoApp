@@ -5,9 +5,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,6 +30,7 @@ import com.example.todoapp.dialogs.TodoDialog
 import com.example.todoapp.notification.NotificationHelper
 import kotlin.collections.plus
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoApp(context: Context) {
     var todoItems by remember {
@@ -44,6 +50,32 @@ fun TodoApp(context: Context) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color(0xFF121212),
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "待辦",
+                        fontSize = 20.sp
+                    )
+                },
+                actions = {
+                    IconButton(onClick = {
+                        // Handle settings click
+                        // You can add your settings logic here
+                    }) {
+                        Text (
+                            text = "⚙",
+                            fontSize = 24.sp
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF41414E),
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                )
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { showDialog = true }
@@ -64,7 +96,7 @@ fun TodoApp(context: Context) {
                         todoItems = todoItems.map {
                             if (it.id == item.id) {
                                 if (isChecked) {
-                                    NotificationHelper.cancelNotification(context, it.id)
+                                    NotificationHelper.cancelAllNotifications(context, it)
                                 }
                                 it.copy(isCompleted = isChecked)
                             } else it
@@ -105,18 +137,18 @@ fun TodoApp(context: Context) {
         if (showDialog) {
             TodoDialog(
                 onDismiss = { showDialog = false },
-                onConfirm = { title: String, description: String, notificationTime: Long? ->
+                onConfirm = { title: String, description: String, notificationTimes: List<Long> ->
                     val newId = (todoItems.maxOfOrNull { it.id } ?: 0) + 1
                     val newItem = TodoItem(
                         title = title,
                         description = description,
                         id = newId,
-                        notificationTime = notificationTime
+                        notificationTimes = notificationTimes
                     )
                     todoItems = todoItems + newItem
 
-                    if (notificationTime != null) {
-                        NotificationHelper.scheduleNotification(context, newItem)
+                    if (notificationTimes.isNotEmpty()) {
+                        NotificationHelper.scheduleNotifications(context, newItem)
                     }
 
                     showDialog = false
@@ -132,21 +164,23 @@ fun TodoApp(context: Context) {
                     selectedTodoItem = null
                 },
                 onSave = { updatedItem ->
-                    NotificationHelper.cancelNotification(context, updatedItem.id)
+                    // Cancel all old notifications first
+                    NotificationHelper.cancelAllNotifications(context, updatedItem)
 
                     todoItems = todoItems.map {
                         if (it.id == updatedItem.id) updatedItem else it
                     }
 
-                    if (updatedItem.notificationTime != null) {
-                        NotificationHelper.scheduleNotification(context, updatedItem)
+                    // Schedule new notifications
+                    if (updatedItem.notificationTimes.isNotEmpty()) {
+                        NotificationHelper.scheduleNotifications(context, updatedItem)
                     }
 
                     showEditDialog = false
                     selectedTodoItem = null
                 },
                 onDelete = { itemToDelete ->
-                    NotificationHelper.cancelNotification(context, itemToDelete.id)
+                    NotificationHelper.cancelAllNotifications(context, itemToDelete)
 
                     todoItems = todoItems.filter { it.id != itemToDelete.id }
 

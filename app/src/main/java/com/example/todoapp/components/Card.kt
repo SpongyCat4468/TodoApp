@@ -28,7 +28,7 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .padding(12.dp)
-            .clickable { onClick() },  // Add clickable
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E1E1E)
         ),
@@ -63,13 +63,46 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
                         modifier = Modifier.padding(top = 4.dp, end = 8.dp)
                     )
                 }
-                if (todoItem.notificationTime != null && todoItem.notificationTime > 0) {
-                    Text(
-                        text = "提醒：" + formatNotificationTime(todoItem.notificationTime),
-                        fontSize = 14.sp,
-                        color = Color(0xFF03DAC6),
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                // Display notification times
+                if (todoItem.notificationTimes.isNotEmpty()) {
+                    val currentTime = System.currentTimeMillis()
+                    val sortedTimes = todoItem.notificationTimes.sortedBy { it }
+                    val totalCount = sortedTimes.size
+
+                    Column(modifier = Modifier.padding(top = 4.dp)) {
+                        if (totalCount == 1) {
+                            val time = sortedTimes[0]
+                            val isExpired = time <= currentTime
+                            Text(
+                                text = "提醒：${formatNotificationTime(time)}${if (isExpired) " (過期)" else ""}",
+                                fontSize = 14.sp,
+                                color = if (isExpired) Color(0xFFFF6B6B) else Color(0xFF03DAC6)
+                            )
+                        } else {
+                            Text(
+                                text = "提醒 (${totalCount}):",
+                                fontSize = 14.sp,
+                                color = Color(0xFF03DAC6)
+                            )
+                            sortedTimes.take(2).forEach { time ->
+                                val isExpired = time <= currentTime
+                                Text(
+                                    text = "• ${formatNotificationTime(time)}${if (isExpired) " (過期)" else ""}",
+                                    fontSize = 12.sp,
+                                    color = if (isExpired) Color(0xFFFF6B6B) else Color(0xFF03DAC6),
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                            if (totalCount > 2) {
+                                Text(
+                                    text = "+${totalCount - 2} 更多...",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF03DAC6),
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

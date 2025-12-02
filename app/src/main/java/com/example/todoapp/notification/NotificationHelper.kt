@@ -10,11 +10,11 @@ import com.example.todoapp.TodoItem
 
 object NotificationHelper {
 
-    fun scheduleNotification(
+    fun scheduleNotifications(
         context: Context,
         todoItem: TodoItem
     ) {
-        if (todoItem.notificationTime == null || todoItem.notificationTime <= System.currentTimeMillis()) {
+        if (todoItem.notificationTimes.isEmpty()) {
             return
         }
 
@@ -28,40 +28,63 @@ object NotificationHelper {
             }
         }
 
-        val intent = Intent(context, NotificationReceiver::class.java).apply {
-            putExtra("TITLE", todoItem.title)
-            putExtra("DESCRIPTION", todoItem.description)
-            putExtra("NOTIFICATION_ID", todoItem.id)
+        var scheduledCount = 0
+        todoItem.notificationTimes.forEachIndexed { index, notificationTime ->
+            if (notificationTime > System.currentTimeMillis()) {
+                val intent = Intent(context, NotificationReceiver::class.java).apply {
+                    putExtra("TITLE", todoItem.title)
+                    putExtra("DESCRIPTION", todoItem.description)
+                    putExtra("NOTIFICATION_ID", generateNotificationId(todoItem.id, index))
+                }
+
+                // Use unique request code for each notification
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    generateNotificationId(todoItem.id, index),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                try {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        notificationTime,
+                        pendingIntent
+                    )
+                    scheduledCount++
+                } catch (e: SecurityException) {
+                    Toast.makeText(context, "無法設定提醒", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
 
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            todoItem.id,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                todoItem.notificationTime,
-                pendingIntent
-            )
-            Toast.makeText(context, "提醒已設定", Toast.LENGTH_SHORT).show()
-        } catch (e: SecurityException) {
-            Toast.makeText(context, "無法設定提醒", Toast.LENGTH_SHORT).show()
+        if (scheduledCount > 0) {
+            val message = if (scheduledCount == 1) "提醒已設定" else "$scheduledCount 個提醒已設定"
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
 
-    fun cancelNotification(context: Context, todoId: Int) {
+    fun cancelAllNotifications(context: Context, todoItem: TodoItem) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, NotificationReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            todoId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(pendingIntent)
+
+        // Cancel all possible notification slots for this todo item
+        // We use a reasonable upper limit (e.g., 20) to ensure we clear all notifications
+        for (index in 0 until 20) {
+            val intent = Intent(context, NotificationReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                generateNotificationId(todoItem.id, index),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+        }
+    }
+
+    // Generate unique notification ID for each todo item and time slot
+    private fun generateNotificationId(todoId: Int, timeIndex: Int): Int {
+        // Combine todoId and timeIndex to create unique ID
+        // Use todoId * 1000 + timeIndex to ensure uniqueness
+        return todoId * 1000 + timeIndex
     }
 }
