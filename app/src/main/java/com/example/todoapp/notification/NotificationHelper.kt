@@ -12,15 +12,20 @@ object NotificationHelper {
 
     fun scheduleNotifications(
         context: Context,
-        todoItem: TodoItem
+        todoItem: TodoItem,
+        isMuted: Boolean = false
     ) {
+        // Don't schedule if muted
+        if (isMuted) {
+            return
+        }
+
         if (todoItem.notificationTimes.isEmpty()) {
             return
         }
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Check if we have permission to schedule exact alarms (Android 12+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
                 Toast.makeText(context, "請在設定中允許精確鬧鐘權限", Toast.LENGTH_LONG).show()
@@ -67,8 +72,6 @@ object NotificationHelper {
     fun cancelAllNotifications(context: Context, todoItem: TodoItem) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Cancel all possible notification slots for this todo item
-        // We use a reasonable upper limit (e.g., 20) to ensure we clear all notifications
         for (index in 0 until 20) {
             val intent = Intent(context, NotificationReceiver::class.java)
             val pendingIntent = PendingIntent.getBroadcast(
@@ -81,10 +84,7 @@ object NotificationHelper {
         }
     }
 
-    // Generate unique notification ID for each todo item and time slot
     private fun generateNotificationId(todoId: Int, timeIndex: Int): Int {
-        // Combine todoId and timeIndex to create unique ID
-        // Use todoId * 1000 + timeIndex to ensure uniqueness
         return todoId * 1000 + timeIndex
     }
 }

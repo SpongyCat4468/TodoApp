@@ -264,15 +264,29 @@ fun WheelPicker(
     selectedValue: Int,
     onValueSelected: (Int) -> Unit
 ) {
-    val list = range.toList()
+    val baseList = range.toList()
+    val repeatedList = remember { List(1000) { baseList }.flatten() } // huge looping list
+
+    val centerStartIndex = remember { (repeatedList.size / 2) - (repeatedList.size / 2 % baseList.size) }
+
     val lazyListState = androidx.compose.foundation.lazy.rememberLazyListState(
-        initialFirstVisibleItemIndex = selectedValue - range.first
+        initialFirstVisibleItemIndex = centerStartIndex + (selectedValue - range.first)
     )
+
+    // The middle visible item index = center of wheel (height = 150dp → ~3 items)
+    val centerItemOffset = 1 // index of the item at the center of the visible area
 
     LaunchedEffect(lazyListState.isScrollInProgress) {
         if (!lazyListState.isScrollInProgress) {
-            val index = lazyListState.firstVisibleItemIndex
-            onValueSelected(list[index])
+            val index = lazyListState.firstVisibleItemIndex + centerItemOffset
+            val realValue = repeatedList[index]
+
+            onValueSelected(realValue)
+
+            // Re-center so we never reach list boundaries
+            lazyListState.scrollToItem(
+                centerStartIndex + (realValue - range.first)
+            )
         }
     }
 
@@ -283,8 +297,9 @@ fun WheelPicker(
             .width(80.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        items(list.size) { i ->
-            val value = list[i]
+        items(repeatedList.size) { i ->
+            val value = repeatedList[i]
+
             Text(
                 text = "%02d".format(value),
                 fontSize = 28.sp,
@@ -294,3 +309,4 @@ fun WheelPicker(
         }
     }
 }
+

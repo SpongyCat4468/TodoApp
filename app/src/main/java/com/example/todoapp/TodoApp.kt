@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,6 +25,7 @@ import com.example.todoapp.components.Card
 import com.example.todoapp.components.DividerWithText
 import com.example.todoapp.components.EmptyText
 import com.example.todoapp.dialogs.EditTodoDialog
+import com.example.todoapp.dialogs.SettingsDialog
 import com.example.todoapp.dialogs.TodoDialog
 import com.example.todoapp.notification.NotificationHelper
 import kotlin.collections.plus
@@ -46,6 +46,8 @@ fun TodoApp(context: Context) {
     var showDialog by remember { mutableStateOf(false) }
     var selectedTodoItem by remember { mutableStateOf<TodoItem?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var isMuted by remember { mutableStateOf (false)}
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -59,10 +61,9 @@ fun TodoApp(context: Context) {
                     )
                 },
                 actions = {
-                    IconButton(onClick = {
-                        // Handle settings click
-                        // You can add your settings logic here
-                    }) {
+                    IconButton(
+                        onClick = { showSettingsDialog = true }
+                        ) {
                         Text (
                             text = "⚙",
                             fontSize = 24.sp
@@ -87,7 +88,6 @@ fun TodoApp(context: Context) {
             }
         }
     ) { innerPadding ->
-
         LazyColumn(modifier = Modifier.padding(innerPadding)) {
             items(unfinished) { item ->
                 Card(
@@ -148,10 +148,20 @@ fun TodoApp(context: Context) {
                     todoItems = todoItems + newItem
 
                     if (notificationTimes.isNotEmpty()) {
-                        NotificationHelper.scheduleNotifications(context, newItem)
+                        NotificationHelper.scheduleNotifications(context, newItem, isMuted)
                     }
 
                     showDialog = false
+                }
+            )
+        }
+
+        if (showSettingsDialog) {
+            SettingsDialog(
+                isMuted = isMuted,
+                onDismiss = { showSettingsDialog = false },
+                onMuteChanged = { newMuteState ->
+                    isMuted = newMuteState
                 }
             )
         }
@@ -173,7 +183,7 @@ fun TodoApp(context: Context) {
 
                     // Schedule new notifications
                     if (updatedItem.notificationTimes.isNotEmpty()) {
-                        NotificationHelper.scheduleNotifications(context, updatedItem)
+                        NotificationHelper.scheduleNotifications(context, updatedItem, isMuted)
                     }
 
                     showEditDialog = false
