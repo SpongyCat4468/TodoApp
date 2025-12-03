@@ -41,7 +41,7 @@ fun TodoDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "新增一個代辦事項",
+                "新增一個待辦事項",
                 color = Color.White
             )
         },

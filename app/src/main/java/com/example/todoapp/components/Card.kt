@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.alpha
 import com.example.todoapp.TodoItem
 
 @Composable
@@ -28,7 +29,8 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .padding(12.dp)
-            .clickable { onClick() },
+            .clickable { onClick() }
+            .alpha(if (todoItem.isCompleted) 0.4f else 1f),
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E1E1E)
         ),
