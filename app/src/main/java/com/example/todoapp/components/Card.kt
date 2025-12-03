@@ -1,27 +1,39 @@
 package com.example.todoapp.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.draw.alpha
 import com.example.todoapp.TodoItem
 
 @Composable
-fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> Unit) {
+fun Card(
+    todoItem: TodoItem,
+    onCheckedChange: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    showDragHandle: Boolean = false,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null
+) {
     val title: String = todoItem.title
     val description: String = todoItem.description
 
@@ -29,7 +41,6 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .padding(12.dp)
-            .clickable { onClick() }
             .alpha(if (todoItem.isCompleted) 0.4f else 1f),
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E1E1E)
@@ -37,7 +48,8 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
         elevation = CardDefaults.cardElevation(
             defaultElevation = 4.dp
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -51,7 +63,11 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
                     uncheckedColor = Color.Gray
                 )
             )
-            Column(modifier = Modifier.padding(start = 12.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .weight(1f)
+            ) {
                 Text(
                     text = title,
                     fontSize = 18.sp,
@@ -104,6 +120,33 @@ fun Card(todoItem: TodoItem, onCheckedChange: (Boolean) -> Unit, onClick: () -> 
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            if (showDragHandle) {
+                Column {
+                    IconButton(
+                        onClick = { onMoveUp?.invoke() },
+                        modifier = Modifier.size(24.dp),
+                        enabled = onMoveUp != null
+                    ) {
+                        Text(
+                            text = "▲",
+                            fontSize = 12.sp,
+                            color = if (onMoveUp != null) Color.Gray else Color.DarkGray
+                        )
+                    }
+                    IconButton(
+                        onClick = { onMoveDown?.invoke() },
+                        modifier = Modifier.size(24.dp),
+                        enabled = onMoveDown != null
+                    ) {
+                        Text(
+                            text = "▼",
+                            fontSize = 12.sp,
+                            color = if (onMoveDown != null) Color.Gray else Color.DarkGray
+                        )
                     }
                 }
             }

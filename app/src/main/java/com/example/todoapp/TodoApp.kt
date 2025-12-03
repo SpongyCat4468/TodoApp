@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -42,8 +42,6 @@ import com.example.todoapp.dialogs.TodoDialog
 import com.example.todoapp.notification.NotificationHelper
 import kotlin.collections.plus
 
-
-
 fun sortTodoList(list: List<TodoItem>, sortOption: SortOption): List<TodoItem> {
     return when (sortOption) {
         SortOption.DEFAULT -> list
@@ -69,19 +67,50 @@ fun TodoApp(context: Context) {
         saveTodoItems(context, todoItems)
     }
 
-    val unfinished = todoItems.filter { !it.isCompleted }
-    val finished = todoItems.filter { it.isCompleted }
+    var unfinishedItems by remember { mutableStateOf(todoItems.filter { !it.isCompleted }) }
+    var finishedItems by remember { mutableStateOf(todoItems.filter { it.isCompleted }) }
+
+    LaunchedEffect(todoItems) {
+        unfinishedItems = todoItems.filter { !it.isCompleted }
+        finishedItems = todoItems.filter { it.isCompleted }
+    }
+
     var showDialog by remember { mutableStateOf(false) }
     var selectedTodoItem by remember { mutableStateOf<TodoItem?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
-    var isMuted by remember { mutableStateOf (false)}
+    var isMuted by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
     var currentSortOption by remember { mutableStateOf(SortOption.DEFAULT) }
 
     // Apply sorting to the lists
-    val sortedUnfinished = sortTodoList(unfinished, currentSortOption)
-    val sortedFinished = sortTodoList(finished, currentSortOption)
+    val displayUnfinished = sortTodoList(unfinishedItems, currentSortOption)
+    val displayFinished = sortTodoList(finishedItems, currentSortOption)
+
+    // Move item functions
+    fun moveUnfinishedItem(fromIndex: Int, direction: Int) {
+        if (currentSortOption != SortOption.DEFAULT) return
+        val toIndex = fromIndex + direction
+        if (toIndex < 0 || toIndex >= unfinishedItems.size) return
+
+        val mutableList = unfinishedItems.toMutableList()
+        val item = mutableList.removeAt(fromIndex)
+        mutableList.add(toIndex, item)
+        unfinishedItems = mutableList
+        todoItems = unfinishedItems + finishedItems
+    }
+
+    fun moveFinishedItem(fromIndex: Int, direction: Int) {
+        if (currentSortOption != SortOption.DEFAULT) return
+        val toIndex = fromIndex + direction
+        if (toIndex < 0 || toIndex >= finishedItems.size) return
+
+        val mutableList = finishedItems.toMutableList()
+        val item = mutableList.removeAt(fromIndex)
+        mutableList.add(toIndex, item)
+        finishedItems = mutableList
+        todoItems = unfinishedItems + finishedItems
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -131,7 +160,10 @@ fun TodoApp(context: Context) {
         }
     ) { innerPadding ->
         LazyColumn(modifier = Modifier.padding(innerPadding)) {
-            items(sortedUnfinished) { item ->
+            itemsIndexed(
+                items = displayUnfinished,
+                key = { _, item -> item.id }
+            ) { index, item ->
                 Card(
                     todoItem = item,
                     onCheckedChange = { isChecked ->
@@ -147,18 +179,30 @@ fun TodoApp(context: Context) {
                     onClick = {
                         selectedTodoItem = item
                         showEditDialog = true
-                    }
+                    },
+                    showDragHandle = currentSortOption == SortOption.DEFAULT,
+                    onMoveUp = if (index > 0) {
+                        { moveUnfinishedItem(index, -1) }
+                    } else null,
+                    onMoveDown = if (index < displayUnfinished.size - 1) {
+                        { moveUnfinishedItem(index, 1) }
+                    } else null
                 )
             }
+
             item {
                 DividerWithText("已完成")
             }
-            if (sortedFinished.isEmpty()) {
+
+            if (displayFinished.isEmpty()) {
                 item {
                     EmptyText()
                 }
             } else {
-                items(sortedFinished) { item ->
+                itemsIndexed(
+                    items = displayFinished,
+                    key = { _, item -> item.id }
+                ) { index, item ->
                     Card(
                         todoItem = item,
                         onCheckedChange = { isChecked ->
@@ -170,7 +214,14 @@ fun TodoApp(context: Context) {
                         onClick = {
                             selectedTodoItem = item
                             showEditDialog = true
-                        }
+                        },
+                        showDragHandle = currentSortOption == SortOption.DEFAULT,
+                        onMoveUp = if (index > 0) {
+                            { moveFinishedItem(index, -1) }
+                        } else null,
+                        onMoveDown = if (index < displayFinished.size - 1) {
+                            { moveFinishedItem(index, 1) }
+                        } else null
                     )
                 }
             }
@@ -197,6 +248,7 @@ fun TodoApp(context: Context) {
                 }
             )
         }
+
         if (showSortDialog) {
             AlertDialog(
                 onDismissRequest = { showSortDialog = false },
@@ -217,7 +269,7 @@ fun TodoApp(context: Context) {
                             }
                         )
                         SortOptionItem(
-                            text = "日期 (最晚到最早)9",
+                            text = "日期 (最晚到最早)",
                             isSelected = currentSortOption == SortOption.DATE_DESCENDING,
                             onClick = {
                                 currentSortOption = SortOption.DATE_DESCENDING
@@ -282,14 +334,12 @@ fun TodoApp(context: Context) {
                     selectedTodoItem = null
                 },
                 onSave = { updatedItem ->
-                    // Cancel all old notifications first
                     NotificationHelper.cancelAllNotifications(context, updatedItem)
 
                     todoItems = todoItems.map {
                         if (it.id == updatedItem.id) updatedItem else it
                     }
 
-                    // Schedule new notifications
                     if (updatedItem.notificationTimes.isNotEmpty()) {
                         NotificationHelper.scheduleNotifications(context, updatedItem, isMuted)
                     }
