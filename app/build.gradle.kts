@@ -42,7 +42,7 @@ android {
 }
 
 dependencies {
-    implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
+    implementation("androidx.compose.foundation:foundation:1.5.4")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

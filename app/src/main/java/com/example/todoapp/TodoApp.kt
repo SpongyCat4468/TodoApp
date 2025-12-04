@@ -1,6 +1,7 @@
 package com.example.todoapp
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -26,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +42,7 @@ import com.example.todoapp.dialogs.EditTodoDialog
 import com.example.todoapp.dialogs.SettingsDialog
 import com.example.todoapp.dialogs.TodoDialog
 import com.example.todoapp.notification.NotificationHelper
-import kotlin.collections.plus
+import kotlinx.coroutines.launch
 
 fun sortTodoList(list: List<TodoItem>, sortOption: SortOption): List<TodoItem> {
     return when (sortOption) {
@@ -59,6 +61,8 @@ fun sortTodoList(list: List<TodoItem>, sortOption: SortOption): List<TodoItem> {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoApp(context: Context) {
+    val coroutineScope = rememberCoroutineScope()
+
     var todoItems by remember {
         mutableStateOf(loadTodoItems(context))
     }
@@ -82,35 +86,90 @@ fun TodoApp(context: Context) {
     var isMuted by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
     var currentSortOption by remember { mutableStateOf(SortOption.DEFAULT) }
+    val listState = rememberLazyListState()
 
-    // Apply sorting to the lists
+    var lastMoveFromTop by remember { mutableStateOf(false) }
+    var savedScrollIndex by remember { mutableStateOf(0) }
+    var savedScrollOffset by remember { mutableStateOf(0) }
+
+    LaunchedEffect(unfinishedItems, finishedItems, lastMoveFromTop) {
+        if (lastMoveFromTop) {
+            listState.scrollToItem(savedScrollIndex, savedScrollOffset)
+            lastMoveFromTop = false
+        }
+    }
+
+    LaunchedEffect(lastMoveFromTop) {
+        if (lastMoveFromTop) {
+            listState.scrollToItem(savedScrollIndex, savedScrollOffset)
+            lastMoveFromTop = false
+        }
+    }
+
     val displayUnfinished = sortTodoList(unfinishedItems, currentSortOption)
     val displayFinished = sortTodoList(finishedItems, currentSortOption)
 
-    // Move item functions
-    fun moveUnfinishedItem(fromIndex: Int, direction: Int) {
-        if (currentSortOption != SortOption.DEFAULT) return
-        val toIndex = fromIndex + direction
-        if (toIndex < 0 || toIndex >= unfinishedItems.size) return
+    val unfinishedDragDropState = rememberDragDropState(
+        items = displayUnfinished,
+        onMove = { fromIndex, toIndex ->
+            if (currentSortOption == SortOption.DEFAULT) {
+                val mutableList = unfinishedItems.toMutableList()
+                val item = mutableList.removeAt(fromIndex)
+                mutableList.add(toIndex, item)
+                unfinishedItems = mutableList
+                todoItems = unfinishedItems + finishedItems
 
-        val mutableList = unfinishedItems.toMutableList()
-        val item = mutableList.removeAt(fromIndex)
-        mutableList.add(toIndex, item)
-        unfinishedItems = mutableList
-        todoItems = unfinishedItems + finishedItems
-    }
+                val lastIndex = displayUnfinished.size - 1
+                val shouldScroll = (toIndex == 0 && fromIndex != 0) ||
+                        fromIndex == lastIndex ||
+                        toIndex == lastIndex
 
-    fun moveFinishedItem(fromIndex: Int, direction: Int) {
-        if (currentSortOption != SortOption.DEFAULT) return
-        val toIndex = fromIndex + direction
-        if (toIndex < 0 || toIndex >= finishedItems.size) return
+                if (shouldScroll) {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(
+                            index = toIndex.coerceAtMost(displayUnfinished.size - 1)
+                        )
+                    }
+                } else if (fromIndex == 0) {
+                    savedScrollIndex = listState.firstVisibleItemIndex
+                    savedScrollOffset = listState.firstVisibleItemScrollOffset
+                    lastMoveFromTop = true
+                }
+            }
+        }
+    )
 
-        val mutableList = finishedItems.toMutableList()
-        val item = mutableList.removeAt(fromIndex)
-        mutableList.add(toIndex, item)
-        finishedItems = mutableList
-        todoItems = unfinishedItems + finishedItems
-    }
+    val finishedDragDropState = rememberDragDropState(
+        items = displayFinished,
+        onMove = { fromIndex, toIndex ->
+            if (currentSortOption == SortOption.DEFAULT) {
+                val mutableList = finishedItems.toMutableList()
+                val item = mutableList.removeAt(fromIndex)
+                mutableList.add(toIndex, item)
+                finishedItems = mutableList
+                todoItems = unfinishedItems + finishedItems
+
+                val lastIndex = displayFinished.size - 1
+                val shouldScroll = (toIndex == 0 && fromIndex != 0) ||
+                        fromIndex == lastIndex ||
+                        toIndex == lastIndex
+
+                if (shouldScroll) {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(
+                            index = (displayUnfinished.size + 1 + toIndex).coerceAtMost(
+                                displayUnfinished.size + displayFinished.size
+                            )
+                        )
+                    }
+                } else if (fromIndex == 0) {
+                    savedScrollIndex = listState.firstVisibleItemIndex
+                    savedScrollOffset = listState.firstVisibleItemScrollOffset
+                    lastMoveFromTop = true
+                }
+            }
+        }
+    )
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -159,35 +218,38 @@ fun TodoApp(context: Context) {
             }
         }
     ) { innerPadding ->
-        LazyColumn(modifier = Modifier.padding(innerPadding)) {
-            itemsIndexed(
-                items = displayUnfinished,
-                key = { _, item -> item.id }
-            ) { index, item ->
-                Card(
-                    todoItem = item,
-                    onCheckedChange = { isChecked ->
-                        todoItems = todoItems.map {
-                            if (it.id == item.id) {
-                                if (isChecked) {
-                                    NotificationHelper.cancelAllNotifications(context, it)
-                                }
-                                it.copy(isCompleted = isChecked)
-                            } else it
-                        }
-                    },
-                    onClick = {
-                        selectedTodoItem = item
-                        showEditDialog = true
-                    },
-                    showDragHandle = currentSortOption == SortOption.DEFAULT,
-                    onMoveUp = if (index > 0) {
-                        { moveUnfinishedItem(index, -1) }
-                    } else null,
-                    onMoveDown = if (index < displayUnfinished.size - 1) {
-                        { moveUnfinishedItem(index, 1) }
-                    } else null
-                )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            items(
+                count = displayUnfinished.size,
+                key = { index -> displayUnfinished[index].id }
+            ) { index ->
+                DraggableItem(
+                    index = index,
+                    item = displayUnfinished[index],
+                    dragDropState = unfinishedDragDropState
+                ) { item, isDragging ->
+                    Card(
+                        todoItem = item,
+                        onCheckedChange = { isChecked ->
+                            todoItems = todoItems.map {
+                                if (it.id == item.id) {
+                                    if (isChecked) {
+                                        NotificationHelper.cancelAllNotifications(context, it)
+                                    }
+                                    it.copy(isCompleted = isChecked)
+                                } else it
+                            }
+                        },
+                        onClick = {
+                            selectedTodoItem = item
+                            showEditDialog = true
+                        },
+                        isDragging = isDragging
+                    )
+                }
             }
 
             item {
@@ -199,30 +261,31 @@ fun TodoApp(context: Context) {
                     EmptyText()
                 }
             } else {
-                itemsIndexed(
-                    items = displayFinished,
-                    key = { _, item -> item.id }
-                ) { index, item ->
-                    Card(
-                        todoItem = item,
-                        onCheckedChange = { isChecked ->
-                            todoItems = todoItems.map {
-                                if (it.id == item.id) it.copy(isCompleted = isChecked)
-                                else it
-                            }
-                        },
-                        onClick = {
-                            selectedTodoItem = item
-                            showEditDialog = true
-                        },
-                        showDragHandle = currentSortOption == SortOption.DEFAULT,
-                        onMoveUp = if (index > 0) {
-                            { moveFinishedItem(index, -1) }
-                        } else null,
-                        onMoveDown = if (index < displayFinished.size - 1) {
-                            { moveFinishedItem(index, 1) }
-                        } else null
-                    )
+                items(
+                    count = displayFinished.size,
+                    key = { index -> displayFinished[index].id }
+                ) { index ->
+                    DraggableItem(
+                        index = index,
+                        item = displayFinished[index],
+                        dragDropState = finishedDragDropState
+                    ) { item, isDragging ->
+                        Card(
+                            todoItem = item,
+                            onCheckedChange = { isChecked ->
+                                todoItems = todoItems.map {
+                                    if (it.id == item.id) {
+                                        it.copy(isCompleted = isChecked)
+                                    } else it
+                                }
+                            },
+                            onClick = {
+                                selectedTodoItem = item
+                                showEditDialog = true
+                            },
+                            isDragging = isDragging
+                        )
+                    }
                 }
             }
         }
