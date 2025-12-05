@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,12 +33,13 @@ import com.example.todoapp.components.formatNotificationTime
 @Composable
 fun TodoDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, String, List<Long>) -> Unit
+    onConfirm: (String, String, List<Long>) -> Unit,
+    recurringCount: Int
 ) {
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var showTimePicker by remember { mutableStateOf(false) }
-    var selectedTimes by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var selectedTimes by remember { mutableStateOf<List<NotificationTime>>(emptyList()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -74,7 +78,6 @@ fun TodoDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Display notification times
                 if (selectedTimes.isNotEmpty()) {
                     Text(
                         text = "提醒時間:",
@@ -82,31 +85,50 @@ fun TodoDialog(
                         color = Color.White,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    selectedTimes.sortedBy { it }.forEach { time ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = formatNotificationTime(time),
-                                fontSize = 14.sp,
-                                color = Color(0xFFB0B0B0)
-                            )
-                            IconButton(
-                                onClick = {
-                                    selectedTimes = selectedTimes.filter { it != time }
-                                }
+
+                    // Scrollable notification times list
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        selectedTimes.sortedBy { it.time }.forEach { notifTime ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text (
-                                    text = "x",
-                                    fontSize = 24.sp
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = formatNotificationTime(notifTime.time),
+                                        fontSize = 14.sp,
+                                        color = Color(0xFFB0B0B0)
+                                    )
+                                    if (notifTime.recurringType != RecurringType.NONE) {
+                                        Text(
+                                            text = " (${notifTime.recurringType.toDisplayString()})",
+                                            fontSize = 14.sp,
+                                            color = Color(0xFFBB86FC)
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        selectedTimes = selectedTimes.filter { it != notifTime }
+                                    }
+                                ) {
+                                    Text (
+                                        text = "x",
+                                        fontSize = 24.sp
+                                    )
+                                }
                             }
                         }
                     }
+
                     Spacer(modifier = Modifier.height(8.dp))
                 } else {
                     Text(
@@ -117,7 +139,6 @@ fun TodoDialog(
                     )
                 }
 
-                // Add notification button
                 Button(
                     onClick = { showTimePicker = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -129,7 +150,6 @@ fun TodoDialog(
                     Text("新增提醒時間")
                 }
 
-                // Clear all notifications button
                 if (selectedTimes.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(
@@ -148,7 +168,7 @@ fun TodoDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
-                        onConfirm(title, description, selectedTimes)
+                        onConfirm(title, description, selectedTimes.map { it.time })
                     }
                 },
                 enabled = title.isNotBlank(),
@@ -180,13 +200,15 @@ fun TodoDialog(
     if (showTimePicker) {
         TimePickerDialog(
             onDismiss = { showTimePicker = false },
-            onTimeSelected = { timeInMillis ->
-                // Add new time only if it's not already in the list
-                if (!selectedTimes.contains(timeInMillis)) {
-                    selectedTimes = selectedTimes + timeInMillis
-                }
+            onTimeSelected = { notificationTime ->
+                selectedTimes = selectedTimes + notificationTime
                 showTimePicker = false
-            }
+            },
+            onRecurringTimeSelected = { times ->
+                selectedTimes = selectedTimes + times
+                showTimePicker = false
+            },
+            recurringCount = recurringCount
         )
     }
 }

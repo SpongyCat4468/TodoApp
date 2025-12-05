@@ -1,4 +1,4 @@
-package com.example.todoapp
+package com.example.todoapp.enums
 
 import android.content.Context
 import androidx.core.content.edit

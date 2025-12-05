@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.todoapp.TodoItem
+import com.example.todoapp.enums.TodoItem
 import com.example.todoapp.components.formatNotificationTime
 
 @Composable
@@ -33,12 +36,15 @@ fun EditTodoDialog(
     todoItem: TodoItem,
     onDismiss: () -> Unit,
     onSave: (TodoItem) -> Unit,
-    onDelete: (TodoItem) -> Unit
+    onDelete: (TodoItem) -> Unit,
+    recurringCount: Int = 10
 ) {
     var title by remember { mutableStateOf(todoItem.title) }
     var description by remember { mutableStateOf(todoItem.description) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var selectedTimes by remember { mutableStateOf(todoItem.notificationTimes) }
+    var selectedTimes by remember {
+        mutableStateOf(todoItem.notificationTimes.map { NotificationTime(it, RecurringType.NONE) })
+    }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -78,7 +84,6 @@ fun EditTodoDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Display notification times
                 if (selectedTimes.isNotEmpty()) {
                     Text(
                         text = "提醒時間:",
@@ -86,31 +91,50 @@ fun EditTodoDialog(
                         color = Color.White,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    selectedTimes.sortedBy { it }.forEach { time ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = formatNotificationTime(time),
-                                fontSize = 14.sp,
-                                color = Color(0xFFB0B0B0)
-                            )
-                            IconButton(
-                                onClick = {
-                                    selectedTimes = selectedTimes.filter { it != time }
-                                }
+
+                    // Scrollable notification times list
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        selectedTimes.sortedBy { it.time }.forEach { notifTime ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text (
-                                    text = "x",
-                                    fontSize = 24.sp
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = formatNotificationTime(notifTime.time),
+                                        fontSize = 14.sp,
+                                        color = Color(0xFFB0B0B0)
+                                    )
+                                    if (notifTime.recurringType != RecurringType.NONE) {
+                                        Text(
+                                            text = " (${notifTime.recurringType.toDisplayString()})",
+                                            fontSize = 14.sp,
+                                            color = Color(0xFFBB86FC)
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = {
+                                        selectedTimes = selectedTimes.filter { it != notifTime }
+                                    }
+                                ) {
+                                    Text (
+                                        text = "x",
+                                        fontSize = 24.sp
+                                    )
+                                }
                             }
                         }
                     }
+
                     Spacer(modifier = Modifier.height(8.dp))
                 } else {
                     Text(
@@ -121,7 +145,6 @@ fun EditTodoDialog(
                     )
                 }
 
-                // Add notification button
                 Button(
                     onClick = { showTimePicker = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -133,7 +156,6 @@ fun EditTodoDialog(
                     Text("新增提醒時間")
                 }
 
-                // Clear all notifications button
                 if (selectedTimes.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(
@@ -149,7 +171,6 @@ fun EditTodoDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Delete button
                 Button(
                     onClick = { showDeleteConfirmation = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -169,7 +190,7 @@ fun EditTodoDialog(
                         val updatedItem = todoItem.copy(
                             title = title,
                             description = description,
-                            notificationTimes = selectedTimes
+                            notificationTimes = selectedTimes.map { it.time }
                         )
                         onSave(updatedItem)
                     }
@@ -203,17 +224,17 @@ fun EditTodoDialog(
     if (showTimePicker) {
         TimePickerDialog(
             onDismiss = { showTimePicker = false },
-            onTimeSelected = { timeInMillis ->
-                // Add new time only if it's not already in the list
-                if (!selectedTimes.contains(timeInMillis)) {
-                    selectedTimes = selectedTimes + timeInMillis
-                }
+            onTimeSelected = { notificationTime ->
+                selectedTimes = selectedTimes + notificationTime
+                showTimePicker = false
+            },
+            onRecurringTimeSelected = { times ->
+                selectedTimes = selectedTimes + times
                 showTimePicker = false
             }
         )
     }
 
-    // Delete confirmation dialog
     if (showDeleteConfirmation) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },

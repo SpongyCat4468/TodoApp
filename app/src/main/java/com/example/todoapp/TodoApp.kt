@@ -1,18 +1,28 @@
 package com.example.todoapp
 
 import android.content.Context
-import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.RadioButton
@@ -31,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -41,8 +52,17 @@ import com.example.todoapp.components.EmptyText
 import com.example.todoapp.dialogs.EditTodoDialog
 import com.example.todoapp.dialogs.SettingsDialog
 import com.example.todoapp.dialogs.TodoDialog
+import com.example.todoapp.enums.TodoItem
+import com.example.todoapp.enums.loadTodoItems
+import com.example.todoapp.enums.saveTodoItems
 import com.example.todoapp.notification.NotificationHelper
 import kotlinx.coroutines.launch
+
+enum class FilterOption {
+    ALL,
+    COMPLETED,
+    UNCOMPLETED
+}
 
 fun sortTodoList(list: List<TodoItem>, sortOption: SortOption): List<TodoItem> {
     return when (sortOption) {
@@ -85,7 +105,12 @@ fun TodoApp(context: Context) {
     var showSettingsDialog by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
+    var showFilterDialog by remember { mutableStateOf(false) }
     var currentSortOption by remember { mutableStateOf(SortOption.DEFAULT) }
+    var currentFilterOption by remember { mutableStateOf(FilterOption.ALL) }
+    var recurringCount by remember { mutableStateOf(10) }
+    var isFabExpanded by remember { mutableStateOf(false) }
+
     val listState = rememberLazyListState()
 
     var lastMoveFromTop by remember { mutableStateOf(false) }
@@ -93,13 +118,6 @@ fun TodoApp(context: Context) {
     var savedScrollOffset by remember { mutableStateOf(0) }
 
     LaunchedEffect(unfinishedItems, finishedItems, lastMoveFromTop) {
-        if (lastMoveFromTop) {
-            listState.scrollToItem(savedScrollIndex, savedScrollOffset)
-            lastMoveFromTop = false
-        }
-    }
-
-    LaunchedEffect(lastMoveFromTop) {
         if (lastMoveFromTop) {
             listState.scrollToItem(savedScrollIndex, savedScrollOffset)
             lastMoveFromTop = false
@@ -187,16 +205,20 @@ fun TodoApp(context: Context) {
                         onClick = { showSortDialog = true }
                     ) {
                         Icon(
-                            painter = painterResource(id = android.R.drawable.ic_menu_sort_by_size),
-                            contentDescription = "Sort"
+                            painter = painterResource(R.drawable.sort),
+                            tint = Color.Unspecified,
+                            contentDescription = "Sort",
+                            modifier = Modifier.size(35.dp)
                         )
                     }
                     IconButton(
                         onClick = { showSettingsDialog = true }
                     ) {
                         Icon(
-                            painter = painterResource(id = android.R.drawable.ic_menu_preferences),
-                            contentDescription = "Settings"
+                            painter = painterResource(R.drawable.settings),
+                            tint = Color.Unspecified,
+                            contentDescription = "Settings",
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                 },
@@ -208,13 +230,66 @@ fun TodoApp(context: Context) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showDialog = true }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(
-                    painter = painterResource(id = android.R.drawable.ic_menu_add),
-                    contentDescription = "Add"
+                AnimatedVisibility(
+                    visible = isFabExpanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        FloatingActionButton(
+                            onClick = {
+                                showFilterDialog = true
+                                isFabExpanded = false
+                            },
+                            containerColor = Color.Transparent
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.filter),
+                                tint = Color.Unspecified,
+                                contentDescription = "Filter",
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                        FloatingActionButton(
+                            onClick = {
+                                showDialog = true
+                                isFabExpanded = false
+                            },
+                            containerColor = Color.Transparent
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.tool),
+                                tint = Color.Unspecified,
+                                contentDescription = "Add",
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                    }
+                }
+
+                val rotation by animateFloatAsState(
+                    targetValue = if (isFabExpanded) 45f else 0f,
+                    label = "fab_rotation"
                 )
+
+                FloatingActionButton(
+                    onClick = { isFabExpanded = !isFabExpanded },
+                    containerColor = Color.Transparent
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.toolbar),
+                        contentDescription = if (isFabExpanded) "Close" else "Menu",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.rotate(rotation).size(40.dp)
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -222,59 +297,24 @@ fun TodoApp(context: Context) {
             state = listState,
             modifier = Modifier.padding(innerPadding)
         ) {
-            items(
-                count = displayUnfinished.size,
-                key = { index -> displayUnfinished[index].id }
-            ) { index ->
-                DraggableItem(
-                    index = index,
-                    item = displayUnfinished[index],
-                    dragDropState = unfinishedDragDropState
-                ) { item, isDragging ->
-                    Card(
-                        todoItem = item,
-                        onCheckedChange = { isChecked ->
-                            todoItems = todoItems.map {
-                                if (it.id == item.id) {
-                                    if (isChecked) {
-                                        NotificationHelper.cancelAllNotifications(context, it)
-                                    }
-                                    it.copy(isCompleted = isChecked)
-                                } else it
-                            }
-                        },
-                        onClick = {
-                            selectedTodoItem = item
-                            showEditDialog = true
-                        },
-                        isDragging = isDragging
-                    )
-                }
-            }
-
-            item {
-                DividerWithText("已完成")
-            }
-
-            if (displayFinished.isEmpty()) {
-                item {
-                    EmptyText()
-                }
-            } else {
+            if (currentFilterOption == FilterOption.ALL || currentFilterOption == FilterOption.UNCOMPLETED) {
                 items(
-                    count = displayFinished.size,
-                    key = { index -> displayFinished[index].id }
+                    count = displayUnfinished.size,
+                    key = { index -> displayUnfinished[index].id }
                 ) { index ->
                     DraggableItem(
                         index = index,
-                        item = displayFinished[index],
-                        dragDropState = finishedDragDropState
+                        item = displayUnfinished[index],
+                        dragDropState = unfinishedDragDropState
                     ) { item, isDragging ->
                         Card(
                             todoItem = item,
                             onCheckedChange = { isChecked ->
                                 todoItems = todoItems.map {
                                     if (it.id == item.id) {
+                                        if (isChecked) {
+                                            NotificationHelper.cancelAllNotifications(context, it)
+                                        }
                                         it.copy(isCompleted = isChecked)
                                     } else it
                                 }
@@ -285,6 +325,49 @@ fun TodoApp(context: Context) {
                             },
                             isDragging = isDragging
                         )
+                    }
+                }
+            }
+
+            // Show divider only when showing all items
+            if (currentFilterOption == FilterOption.ALL) {
+                item {
+                    DividerWithText("已完成")
+                }
+            }
+
+            // Show finished items based on filter
+            if (currentFilterOption == FilterOption.ALL || currentFilterOption == FilterOption.COMPLETED) {
+                if (displayFinished.isEmpty()) {
+                    item {
+                        EmptyText()
+                    }
+                } else {
+                    items(
+                        count = displayFinished.size,
+                        key = { index -> displayFinished[index].id }
+                    ) { index ->
+                        DraggableItem(
+                            index = index,
+                            item = displayFinished[index],
+                            dragDropState = finishedDragDropState
+                        ) { item, isDragging ->
+                            Card(
+                                todoItem = item,
+                                onCheckedChange = { isChecked ->
+                                    todoItems = todoItems.map {
+                                        if (it.id == item.id) {
+                                            it.copy(isCompleted = isChecked)
+                                        } else it
+                                    }
+                                },
+                                onClick = {
+                                    selectedTodoItem = item
+                                    showEditDialog = true
+                                },
+                                isDragging = isDragging
+                            )
+                        }
                     }
                 }
             }
@@ -306,10 +389,160 @@ fun TodoApp(context: Context) {
                     if (notificationTimes.isNotEmpty()) {
                         NotificationHelper.scheduleNotifications(context, newItem, isMuted)
                     }
-
                     showDialog = false
-                }
+                },
+                recurringCount = recurringCount
             )
+        }
+
+        if (showFilterDialog) {
+            var showDeleteConfirmation by remember { mutableStateOf(false) }
+            var tempFilterOption by remember { mutableStateOf(currentFilterOption) }
+
+            AlertDialog(
+                onDismissRequest = {
+                    currentFilterOption = FilterOption.ALL
+                    showFilterDialog = false
+                },
+                title = {
+                    Text(
+                        text = "篩選",
+                        color = Color.White
+                    )
+                },
+                text = {
+                    Column {
+                        FilterOptionItem(
+                            text = "全部",
+                            isSelected = tempFilterOption == FilterOption.ALL,
+                            onClick = {
+                                tempFilterOption = FilterOption.ALL
+                            }
+                        )
+                        FilterOptionItem(
+                            text = "完成",
+                            isSelected = tempFilterOption == FilterOption.COMPLETED,
+                            onClick = {
+                                tempFilterOption = FilterOption.COMPLETED
+                            }
+                        )
+                        FilterOptionItem(
+                            text = "未完成",
+                            isSelected = tempFilterOption == FilterOption.UNCOMPLETED,
+                            onClick = {
+                                tempFilterOption = FilterOption.UNCOMPLETED
+                            }
+                        )
+                    }
+                },
+                confirmButton = {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextButton(
+                            onClick = {
+                                showDeleteConfirmation = true
+                            }
+                        ) {
+                            Text(
+                                text = "全選並刪除",
+                                color = Color(0xFFCF6679)
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                currentFilterOption = FilterOption.ALL
+                                showFilterDialog = false
+                            }
+                        ) {
+                            Text(
+                                text = "取消",
+                                color = Color(0xFF03DAC6)
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                currentFilterOption = tempFilterOption
+                                showFilterDialog = false
+                            }
+                        ) {
+                            Text(
+                                text = "套用",
+                                color = Color(0xFF03DAC6)
+                            )
+                        }
+                    }
+                },
+                containerColor = Color(0xFF2C2C2C)
+            )
+
+            if (showDeleteConfirmation) {
+                val itemsToDelete = when (tempFilterOption) {
+                    FilterOption.ALL -> todoItems
+                    FilterOption.COMPLETED -> finishedItems
+                    FilterOption.UNCOMPLETED -> unfinishedItems
+                }
+
+                val categoryText = when (tempFilterOption) {
+                    FilterOption.ALL -> "全部"
+                    FilterOption.COMPLETED -> "完成"
+                    FilterOption.UNCOMPLETED -> "未完成"
+                }
+
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmation = false },
+                    title = {
+                        Text(
+                            "確認刪除",
+                            color = Color.White
+                        )
+                    },
+                    text = {
+                        Text(
+                            "確定要刪除所有「${categoryText}」的待辦事項嗎？（共 ${itemsToDelete.size} 項）",
+                            color = Color.White
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.Button(
+                            onClick = {
+                                itemsToDelete.forEach { item ->
+                                    NotificationHelper.cancelAllNotifications(context, item)
+                                }
+
+                                todoItems = when (tempFilterOption) {
+                                    FilterOption.ALL -> emptyList()
+                                    FilterOption.COMPLETED -> unfinishedItems
+                                    FilterOption.UNCOMPLETED -> finishedItems
+                                }
+
+                                currentFilterOption = FilterOption.ALL
+                                showDeleteConfirmation = false
+                                showFilterDialog = false
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFCF6679),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("刪除")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showDeleteConfirmation = false }
+                        ) {
+                            Text(
+                                text = "取消",
+                                color = Color(0xFFB0B0B0)
+                            )
+                        }
+                    },
+                    containerColor = Color(0xFF1E1E1E),
+                    titleContentColor = Color.White,
+                    textContentColor = Color.White
+                )
+            }
         }
 
         if (showSortDialog) {
@@ -382,9 +615,13 @@ fun TodoApp(context: Context) {
         if (showSettingsDialog) {
             SettingsDialog(
                 isMuted = isMuted,
+                recurringCount = recurringCount,
                 onDismiss = { showSettingsDialog = false },
                 onMuteChanged = { newMuteState ->
                     isMuted = newMuteState
+                },
+                onRecurringCountChanged = { newCount ->
+                    recurringCount = newCount
                 }
             )
         }
@@ -417,9 +654,40 @@ fun TodoApp(context: Context) {
 
                     showEditDialog = false
                     selectedTodoItem = null
-                }
+                },
+                recurringCount = recurringCount
             )
         }
+    }
+}
+
+@Composable
+fun FilterOptionItem(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = onClick,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = Color(0xFF6200EE),
+                unselectedColor = Color.Gray
+            )
+        )
+        Text(
+            text = text,
+            color = Color.White,
+            modifier = Modifier.padding(start = 8.dp),
+            fontSize = 16.sp
+        )
     }
 }
 
