@@ -23,7 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.todoapp.enums.TodoItem
+import com.example.todoapp.enumsAndItems.TodoItem
 
 @Composable
 fun Card(

@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.widget.Toast
-import com.example.todoapp.enums.TodoItem
+import com.example.todoapp.enumsAndItems.TodoItem
 
 object NotificationHelper {
 

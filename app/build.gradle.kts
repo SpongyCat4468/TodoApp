@@ -43,6 +43,9 @@ android {
 
 dependencies {
     implementation("androidx.compose.foundation:foundation:1.5.4")
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
