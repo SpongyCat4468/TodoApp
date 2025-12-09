@@ -13,7 +13,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -33,8 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -70,16 +67,7 @@ import com.example.todoapp.notification.NotificationHelper
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.IOException
 
 enum class FilterOption {
     ALL,
@@ -98,103 +86,6 @@ fun sortTodoList(list: List<TodoItem>, sortOption: SortOption): List<TodoItem> {
         }
         SortOption.TITLE_AZ -> list.sortedBy { it.title.lowercase() }
         SortOption.TITLE_ZA -> list.sortedByDescending { it.title.lowercase() }
-    }
-}
-
-// API call -> TODO
-class TodoApiService {
-    private val client = OkHttpClient()
-    private val baseUrl = "https://your-api-domain.com/api"
-
-    suspend fun fetchUserTodos(userEmail: String): List<TodoItem> = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url("$baseUrl/todos?email=$userEmail")
-                .get()
-                .addHeader("Content-Type", "application/json")
-                .build()
-
-            val response = client.newCall(request).execute()
-
-            if (response.isSuccessful) {
-                val responseBody = response.body?.string() ?: "[]"
-                parseTodoItems(responseBody)
-            } else {
-                Log.e("TodoApiService", "Failed to fetch todos: ${response.code}")
-                emptyList()
-            }
-        } catch (e: IOException) {
-            Log.e("TodoApiService", "Network error: ${e.message}")
-            emptyList()
-        } catch (e: Exception) {
-            Log.e("TodoApiService", "Error fetching todos: ${e.message}")
-            emptyList()
-        }
-    }
-
-    suspend fun syncTodoItems(userEmail: String, todos: List<TodoItem>): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val jsonArray = JSONArray()
-            todos.forEach { todo ->
-                val jsonObject = JSONObject().apply {
-                    put("id", todo.id)
-                    put("title", todo.title)
-                    put("description", todo.description)
-                    put("isCompleted", todo.isCompleted)
-                    put("notificationTimes", JSONArray(todo.notificationTimes))
-                }
-                jsonArray.put(jsonObject)
-            }
-
-            val requestBody = JSONObject().apply {
-                put("email", userEmail)
-                put("todos", jsonArray)
-            }
-
-            val request = Request.Builder()
-                .url("$baseUrl/todos/sync")
-                .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
-                .addHeader("Content-Type", "application/json")
-                .build()
-
-            val response = client.newCall(request).execute()
-            response.isSuccessful
-        } catch (e: Exception) {
-            Log.e("TodoApiService", "Error syncing todos: ${e.message}")
-            false
-        }
-    }
-
-    private fun parseTodoItems(jsonString: String): List<TodoItem> {
-        try {
-            val jsonArray = JSONArray(jsonString)
-            val items = mutableListOf<TodoItem>()
-
-            for (i in 0 until jsonArray.length()) {
-                val jsonObject = jsonArray.getJSONObject(i)
-                val notificationTimesArray = jsonObject.getJSONArray("notificationTimes")
-                val notificationTimes = mutableListOf<Long>()
-
-                for (j in 0 until notificationTimesArray.length()) {
-                    notificationTimes.add(notificationTimesArray.getLong(j))
-                }
-
-                items.add(
-                    TodoItem(
-                        id = jsonObject.getInt("id"),
-                        title = jsonObject.getString("title"),
-                        description = jsonObject.getString("description"),
-                        isCompleted = jsonObject.getBoolean("isCompleted"),
-                        notificationTimes = notificationTimes
-                    )
-                )
-            }
-
-            return items
-        } catch (e: Exception) {
-            Log.e("TodoApiService", "Error parsing todos: ${e.message}")
-            return emptyList()
-        }
     }
 }
 
@@ -244,6 +135,7 @@ fun TodoApp(context: Context) {
         finishedItems = todoItems.filter { it.isCompleted }
     }
 
+    // Load todos from server when user signs in
     LaunchedEffect(userEmail) {
         if (userEmail != null) {
             isLoading = true
@@ -262,18 +154,35 @@ fun TodoApp(context: Context) {
         }
     }
 
-    fun syncTodos() {
+    // Sync all local todos to server (bulk create)
+    fun syncAllTodosToServer() {
         if (userEmail != null && !isSyncing) {
             coroutineScope.launch {
                 isSyncing = true
                 try {
-                    val success = apiService.syncTodoItems(userEmail!!, todoItems)
-                    if (success) {
-                        Log.d("TodoApp", "Todos synced successfully")
-                        Toast.makeText(localContext, "同步成功", Toast.LENGTH_SHORT).show()
+                    // First, fetch existing todos from server
+                    val serverTodos = apiService.fetchUserTodos(userEmail!!)
+
+                    // Find todos that don't exist on server (by comparing IDs or content)
+                    val newTodos = todoItems.filter { localTodo ->
+                        serverTodos.none { it.id == localTodo.id }
+                    }
+
+                    if (newTodos.isNotEmpty()) {
+                        val syncedTodos = apiService.bulkCreateTodos(userEmail!!, newTodos)
+                        if (syncedTodos.isNotEmpty()) {
+                            // Update local todos with server-assigned IDs
+                            val updatedTodos = todoItems.map { localTodo ->
+                                syncedTodos.find { it.title == localTodo.title && it.description == localTodo.description }
+                                    ?: localTodo
+                            }
+                            todoItems = updatedTodos
+                            Toast.makeText(localContext, "同步成功", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(localContext, "同步失敗", Toast.LENGTH_SHORT).show()
+                        }
                     } else {
-                        Log.e("TodoApp", "Failed to sync todos")
-                        Toast.makeText(localContext, "同步失敗", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(localContext, "已是最新狀態", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     Log.e("TodoApp", "Sync error: ${e.message}")
@@ -429,7 +338,7 @@ fun TodoApp(context: Context) {
                 actions = {
                     if (userEmail != null) {
                         IconButton(
-                            onClick = { syncTodos() },
+                            onClick = { syncAllTodosToServer() },
                             enabled = !isSyncing
                         ) {
                             if (isSyncing) {
@@ -638,8 +547,15 @@ fun TodoApp(context: Context) {
                                             it.copy(isCompleted = isChecked)
                                         } else it
                                     }
+
+                                    // Update on server
                                     if (userEmail != null) {
-                                        syncTodos()
+                                        coroutineScope.launch {
+                                            val success = apiService.toggleTodo(userEmail!!, item.id)
+                                            if (!success) {
+                                                Toast.makeText(localContext, "更新失敗", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     }
                                 },
                                 onClick = {
@@ -681,8 +597,15 @@ fun TodoApp(context: Context) {
                                                 it.copy(isCompleted = isChecked)
                                             } else it
                                         }
+
+                                        // Update on server
                                         if (userEmail != null) {
-                                            syncTodos()
+                                            coroutineScope.launch {
+                                                val success = apiService.toggleTodo(userEmail!!, item.id)
+                                                if (!success) {
+                                                    Toast.makeText(localContext, "更新失敗", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
                                         }
                                     },
                                     onClick = {
@@ -776,21 +699,57 @@ fun TodoApp(context: Context) {
             TodoDialog(
                 onDismiss = { showDialog = false },
                 onConfirm = { title: String, description: String, notificationTimes: List<Long> ->
-                    val newId = (todoItems.maxOfOrNull { it.id } ?: 0) + 1
+                    Log.d("TodoApp", "=== CREATE TODO STARTED ===")
+                    Log.d("TodoApp", "Title: $title")
+                    Log.d("TodoApp", "Description: $description")
+                    Log.d("TodoApp", "Notification Times: $notificationTimes")
+                    Log.d("TodoApp", "User Email: $userEmail")
+
                     val newItem = TodoItem(
                         title = title,
                         description = description,
-                        id = newId,
+                        id = 0, // Server will assign ID
                         notificationTimes = notificationTimes
                     )
-                    todoItems = todoItems + newItem
-
-                    if (notificationTimes.isNotEmpty()) {
-                        NotificationHelper.scheduleNotifications(context, newItem, isMuted)
-                    }
 
                     if (userEmail != null) {
-                        syncTodos()
+                        Log.d("TodoApp", "User is logged in, creating on server...")
+                        // Create on server first
+                        coroutineScope.launch {
+                            try {
+                                Log.d("TodoApp", "Calling apiService.createTodo()")
+                                val createdItem = apiService.createTodo(userEmail!!, newItem)
+                                Log.d("TodoApp", "API Response: $createdItem")
+
+                                if (createdItem != null) {
+                                    Log.d("TodoApp", "Todo created successfully with ID: ${createdItem.id}")
+                                    todoItems = todoItems + createdItem
+
+                                    if (notificationTimes.isNotEmpty()) {
+                                        NotificationHelper.scheduleNotifications(context, createdItem, isMuted)
+                                    }
+
+                                    Toast.makeText(localContext, "已建立並同步", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Log.e("TodoApp", "API returned null - creation failed")
+                                    Toast.makeText(localContext, "建立失敗: API 返回空值", Toast.LENGTH_LONG).show()
+                                }
+                            } catch (e: Exception) {
+                                Log.e("TodoApp", "Exception during todo creation", e)
+                                Toast.makeText(localContext, "建立失敗: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } else {
+                        Log.d("TodoApp", "User not logged in, creating locally only")
+                        // Create locally only
+                        val newId = (todoItems.maxOfOrNull { it.id } ?: 0) + 1
+                        val localItem = newItem.copy(id = newId)
+                        todoItems = todoItems + localItem
+
+                        if (notificationTimes.isNotEmpty()) {
+                            NotificationHelper.scheduleNotifications(context, localItem, isMuted)
+                        }
+                        Log.d("TodoApp", "Local todo created with ID: $newId")
                     }
 
                     showDialog = false
@@ -914,14 +873,36 @@ fun TodoApp(context: Context) {
                                     NotificationHelper.cancelAllNotifications(context, item)
                                 }
 
-                                todoItems = when (tempFilterOption) {
-                                    FilterOption.ALL -> emptyList()
-                                    FilterOption.COMPLETED -> unfinishedItems
-                                    FilterOption.UNCOMPLETED -> finishedItems
-                                }
-
+                                // Delete from server if logged in
                                 if (userEmail != null) {
-                                    syncTodos()
+                                    coroutineScope.launch {
+                                        when (tempFilterOption) {
+                                            FilterOption.ALL -> {
+                                                val success = apiService.deleteAllTodos(userEmail!!)
+                                                if (success) {
+                                                    todoItems = emptyList()
+                                                } else {
+                                                    Toast.makeText(localContext, "刪除失敗", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            FilterOption.COMPLETED, FilterOption.UNCOMPLETED -> {
+                                                itemsToDelete.forEach { item ->
+                                                    apiService.deleteTodo(userEmail!!, item.id)
+                                                }
+                                                todoItems = when (tempFilterOption) {
+                                                    FilterOption.COMPLETED -> unfinishedItems
+                                                    FilterOption.UNCOMPLETED -> finishedItems
+                                                    else -> todoItems
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    todoItems = when (tempFilterOption) {
+                                        FilterOption.ALL -> emptyList()
+                                        FilterOption.COMPLETED -> unfinishedItems
+                                        FilterOption.UNCOMPLETED -> finishedItems
+                                    }
                                 }
 
                                 currentFilterOption = FilterOption.ALL
@@ -1052,8 +1033,16 @@ fun TodoApp(context: Context) {
                         NotificationHelper.scheduleNotifications(context, updatedItem, isMuted)
                     }
 
+                    // Update on server
                     if (userEmail != null) {
-                        syncTodos()
+                        coroutineScope.launch {
+                            val success = apiService.updateTodo(userEmail!!, updatedItem)
+                            if (success) {
+                                Toast.makeText(localContext, "已更新", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(localContext, "更新失敗", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
 
                     showEditDialog = false
@@ -1064,10 +1053,17 @@ fun TodoApp(context: Context) {
 
                     todoItems = todoItems.filter { it.id != itemToDelete.id }
 
+                    // Delete from server
                     if (userEmail != null) {
-                        syncTodos()
+                        coroutineScope.launch {
+                            val success = apiService.deleteTodo(userEmail!!, itemToDelete.id)
+                            if (success) {
+                                Toast.makeText(localContext, "已刪除", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(localContext, "刪除失敗", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
-
                     showEditDialog = false
                     selectedTodoItem = null
                 },

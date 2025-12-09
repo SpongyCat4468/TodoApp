@@ -66,13 +66,11 @@ class DragDropState<T>(
 
         dragOffset += dragAmount
 
-        // Calculate target index based on accumulated offset from start position
         val originalIndex = startIndex ?: return
         var calculatedTarget = originalIndex
         var accumulatedHeight = 0f
 
         if (dragOffset > 0) {
-            // Dragging down
             for (i in (originalIndex + 1) until items.size) {
                 val itemHeight = itemHeights[i] ?: continue
                 if (dragOffset > accumulatedHeight + itemHeight / 2) {
@@ -83,7 +81,6 @@ class DragDropState<T>(
                 }
             }
         } else if (dragOffset < 0) {
-            // Dragging up
             for (i in (originalIndex - 1) downTo 0) {
                 val itemHeight = itemHeights[i] ?: continue
                 if (dragOffset < -(accumulatedHeight + itemHeight / 2)) {

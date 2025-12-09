@@ -35,21 +35,18 @@ fun Card(
     val title: String = todoItem.title
     val description: String = todoItem.description
 
-    // Animate scale when checked/unchecked
     val scale by animateFloatAsState(
         targetValue = if (todoItem.isCompleted) 0.95f else 1f,
         animationSpec = tween(durationMillis = 300),
         label = "card_scale"
     )
 
-    // Animate opacity when checked/unchecked
     val animatedAlpha by animateFloatAsState(
         targetValue = if (todoItem.isCompleted) 0.4f else 1f,
         animationSpec = tween(durationMillis = 300),
         label = "card_alpha"
     )
 
-    // Animate background color
     val backgroundColor by animateColorAsState(
         targetValue = when {
             isDragging -> Color(0xFF2E2E2E)
@@ -59,8 +56,6 @@ fun Card(
         animationSpec = tween(durationMillis = 300),
         label = "card_background"
     )
-
-    // Animated checkbox scale
     val checkboxScale by animateFloatAsState(
         targetValue = if (todoItem.isCompleted) 1.1f else 1f,
         animationSpec = tween(durationMillis = 200),
@@ -115,7 +110,6 @@ fun Card(
                         modifier = Modifier.padding(top = 4.dp, end = 8.dp)
                     )
                 }
-                // Display notification times
                 if (todoItem.notificationTimes.isNotEmpty()) {
                     val currentTime = System.currentTimeMillis()
                     val sortedTimes = todoItem.notificationTimes.sortedBy { it }
