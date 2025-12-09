@@ -1,163 +1,127 @@
 package com.example.todoapp.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.todoapp.enumsAndItems.TodoItem
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
 fun Card(
     todoItem: TodoItem,
     onCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit,
-    isDragging: Boolean = false
+    isDragging: Boolean = false,
+    syncTag: String? = null
 ) {
-    val title: String = todoItem.title
-    val description: String = todoItem.description
+    val backgroundColor = if (isDragging) Color(0xFF3A3A4A) else Color(0xFF2C2C2C)
 
-    val scale by animateFloatAsState(
-        targetValue = if (todoItem.isCompleted) 0.95f else 1f,
-        animationSpec = tween(durationMillis = 300),
-        label = "card_scale"
-    )
-
-    val animatedAlpha by animateFloatAsState(
-        targetValue = if (todoItem.isCompleted) 0.4f else 1f,
-        animationSpec = tween(durationMillis = 300),
-        label = "card_alpha"
-    )
-
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isDragging -> Color(0xFF2E2E2E)
-            todoItem.isCompleted -> Color(0xFF252525)
-            else -> Color(0xFF1E1E1E)
-        },
-        animationSpec = tween(durationMillis = 300),
-        label = "card_background"
-    )
-    val checkboxScale by animateFloatAsState(
-        targetValue = if (todoItem.isCompleted) 1.1f else 1f,
-        animationSpec = tween(durationMillis = 200),
-        label = "checkbox_scale"
-    )
-
-    Card(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp)
-            .scale(scale)
-            .alpha(animatedAlpha),
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isDragging) 8.dp else 4.dp
-        ),
-        shape = RoundedCornerShape(16.dp),
-        onClick = if (isDragging) ({}) else onClick
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(backgroundColor, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(
                 checked = todoItem.isCompleted,
-                onCheckedChange = if (isDragging) null else onCheckedChange,
-                modifier = Modifier.scale(checkboxScale),
+                onCheckedChange = onCheckedChange,
                 colors = CheckboxDefaults.colors(
-                    checkedColor = Color(0xFF6200EE),
-                    uncheckedColor = Color.Gray
+                    checkedColor = Color(0xFF03DAC6),
+                    uncheckedColor = Color.Gray,
+                    checkmarkColor = Color.Black
                 )
             )
-            Column(
-                modifier = Modifier
-                    .padding(start = 12.dp)
-                    .weight(1f)
-            ) {
-                Text(
-                    text = title,
-                    fontSize = 18.sp,
-                    color = Color.White,
-                    textDecoration = if (todoItem.isCompleted) TextDecoration.LineThrough else null
-                )
-                if (description.isNotEmpty()) {
-                    Text(
-                        text = description,
-                        fontSize = 14.sp,
-                        color = Color(0xFFB0B0B0),
-                        textDecoration = if (todoItem.isCompleted) TextDecoration.LineThrough else null,
-                        modifier = Modifier.padding(top = 4.dp, end = 8.dp)
-                    )
-                }
-                if (todoItem.notificationTimes.isNotEmpty()) {
-                    val currentTime = System.currentTimeMillis()
-                    val sortedTimes = todoItem.notificationTimes.sortedBy { it }
-                    val totalCount = sortedTimes.size
 
-                    Column(modifier = Modifier.padding(top = 4.dp)) {
-                        if (totalCount == 1) {
-                            val time = sortedTimes[0]
-                            val isExpired = time <= currentTime
-                            Text(
-                                text = "提醒：${formatNotificationTime(time)}${if (isExpired) " (過期)" else ""}",
-                                fontSize = 14.sp,
-                                color = if (isExpired) Color(0xFFFF6B6B) else Color(0xFF03DAC6)
-                            )
-                        } else {
-                            Text(
-                                text = "提醒 (${totalCount}):",
-                                fontSize = 14.sp,
-                                color = Color(0xFF03DAC6)
-                            )
-                            sortedTimes.take(2).forEach { time ->
-                                val isExpired = time <= currentTime
-                                Text(
-                                    text = "• ${formatNotificationTime(time)}${if (isExpired) " (過期)" else ""}",
-                                    fontSize = 12.sp,
-                                    color = if (isExpired) Color(0xFFFF6B6B) else Color(0xFF03DAC6),
-                                    modifier = Modifier.padding(start = 8.dp)
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = todoItem.title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (todoItem.isCompleted) Color.Gray else Color.White,
+                        textDecoration = if (todoItem.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+
+                    if (syncTag != null) {
+                        Text(
+                            text = syncTag,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (syncTag == "線上") Color(0xFF4CAF50) else Color(0xFFFFA726),
+                            modifier = Modifier
+                                .background(
+                                    color = if (syncTag == "線上")
+                                        Color(0xFF4CAF50).copy(alpha = 0.2f)
+                                    else
+                                        Color(0xFFFFA726).copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(4.dp)
                                 )
-                            }
-                            if (totalCount > 2) {
-                                Text(
-                                    text = "+${totalCount - 2} 更多...",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF03DAC6),
-                                    modifier = Modifier.padding(start = 8.dp)
-                                )
-                            }
-                        }
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                 }
-            }
-            if (isDragging) {
-                Text(
-                    text = "⋮⋮",
-                    fontSize = 24.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(start = 8.dp)
-                )
+
+                if (todoItem.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = todoItem.description,
+                        fontSize = 14.sp,
+                        color = if (todoItem.isCompleted) Color.Gray else Color.LightGray,
+                        textDecoration = if (todoItem.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (todoItem.notificationTimes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+                    val timeText = if (todoItem.notificationTimes.size == 1) {
+                        dateFormat.format(Date(todoItem.notificationTimes[0]))
+                    } else {
+                        "${dateFormat.format(Date(todoItem.notificationTimes.minOrNull() ?: 0))} +${todoItem.notificationTimes.size - 1}"
+                    }
+
+                    Text(
+                        text = "🔔 $timeText",
+                        fontSize = 12.sp,
+                        color = Color(0xFF03DAC6),
+                        modifier = Modifier
+                            .background(
+                                Color(0xFF03DAC6).copy(alpha = 0.1f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }

@@ -16,7 +16,6 @@ class TodoApiService {
     private val client = OkHttpClient()
     private val baseUrl = "https://todoapi-production-8020.up.railway.app"
 
-    // Fetch all todos for a user
     suspend fun fetchUserTodos(userEmail: String): List<TodoItem> = withContext(Dispatchers.IO) {
         try {
             val url = "$baseUrl/todos/$userEmail"
@@ -54,8 +53,6 @@ class TodoApiService {
             emptyList()
         }
     }
-
-    // Create a new todo
     suspend fun createTodo(userEmail: String, todo: TodoItem): TodoItem? = withContext(Dispatchers.IO) {
         try {
             val jsonObject = JSONObject().apply {
@@ -121,7 +118,6 @@ class TodoApiService {
         }
     }
 
-    // Update an existing todo
     suspend fun updateTodo(userEmail: String, todo: TodoItem): Boolean = withContext(Dispatchers.IO) {
         try {
             val jsonObject = JSONObject().apply {
@@ -156,7 +152,6 @@ class TodoApiService {
         }
     }
 
-    // Toggle todo completion status
     suspend fun toggleTodo(userEmail: String, todoId: Int): Boolean = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -173,7 +168,6 @@ class TodoApiService {
         }
     }
 
-    // Delete a specific todo
     suspend fun deleteTodo(userEmail: String, todoId: Int): Boolean = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -190,7 +184,6 @@ class TodoApiService {
         }
     }
 
-    // Delete all todos for a user
     suspend fun deleteAllTodos(userEmail: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -207,7 +200,6 @@ class TodoApiService {
         }
     }
 
-    // Search todos by title
     suspend fun searchTodos(userEmail: String, query: String): List<TodoItem> = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -231,7 +223,6 @@ class TodoApiService {
         }
     }
 
-    // Get todo statistics
     suspend fun getTodoStats(userEmail: String): TodoStats? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
@@ -255,7 +246,6 @@ class TodoApiService {
         }
     }
 
-    // Bulk create todos
     suspend fun bulkCreateTodos(userEmail: String, todos: List<TodoItem>): List<TodoItem> = withContext(Dispatchers.IO) {
         try {
             val jsonArray = JSONArray()
@@ -304,7 +294,6 @@ class TodoApiService {
         }
     }
 
-    // Parse multiple todo items from JSON
     private fun parseTodoItems(jsonString: String): List<TodoItem> {
         try {
             val jsonArray = JSONArray(jsonString)
@@ -337,7 +326,6 @@ class TodoApiService {
         }
     }
 
-    // Parse a single todo item from JSON
     private fun parseSingleTodoItem(jsonString: String): TodoItem? {
         try {
             Log.d("TodoApiService", "=== PARSING SINGLE TODO ===")

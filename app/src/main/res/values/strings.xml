@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">TodoApp</string>
+    <string name="widget_description">顯示您的待辦事項</string>
 </resources>

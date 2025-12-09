@@ -100,6 +100,8 @@ fun TodoApp(context: Context) {
         mutableStateOf(loadTodoItems(context))
     }
 
+    var serverTodoIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+
     var unfinishedItems by remember { mutableStateOf(todoItems.filter { !it.isCompleted }) }
     var finishedItems by remember { mutableStateOf(todoItems.filter { it.isCompleted }) }
 
@@ -135,14 +137,29 @@ fun TodoApp(context: Context) {
         finishedItems = todoItems.filter { it.isCompleted }
     }
 
-    // Load todos from server when user signs in
     LaunchedEffect(userEmail) {
         if (userEmail != null) {
             isLoading = true
             try {
                 val fetchedTodos = apiService.fetchUserTodos(userEmail!!)
                 if (fetchedTodos.isNotEmpty()) {
-                    todoItems = fetchedTodos
+                    val localTodos = loadTodoItems(context)
+                    val mergedTodos = mutableListOf<TodoItem>()
+
+                    mergedTodos.addAll(fetchedTodos)
+
+                    localTodos.forEach { localTodo ->
+                        val existsOnServer = fetchedTodos.any { serverTodo ->
+                            serverTodo.title == localTodo.title &&
+                                    serverTodo.description == localTodo.description
+                        }
+                        if (!existsOnServer) {
+                            mergedTodos.add(localTodo)
+                        }
+                    }
+
+                    todoItems = mergedTodos
+                    serverTodoIds = fetchedTodos.map { it.id }.toSet()
                     Toast.makeText(localContext, "已載入雲端待辦事項", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -151,19 +168,18 @@ fun TodoApp(context: Context) {
             } finally {
                 isLoading = false
             }
+        } else {
+            serverTodoIds = emptySet()
         }
     }
 
-    // Sync all local todos to server (bulk create)
     fun syncAllTodosToServer() {
         if (userEmail != null && !isSyncing) {
             coroutineScope.launch {
                 isSyncing = true
                 try {
-                    // First, fetch existing todos from server
                     val serverTodos = apiService.fetchUserTodos(userEmail!!)
 
-                    // Find todos that don't exist on server (by comparing IDs or content)
                     val newTodos = todoItems.filter { localTodo ->
                         serverTodos.none { it.id == localTodo.id }
                     }
@@ -171,15 +187,15 @@ fun TodoApp(context: Context) {
                     if (newTodos.isNotEmpty()) {
                         val syncedTodos = apiService.bulkCreateTodos(userEmail!!, newTodos)
                         if (syncedTodos.isNotEmpty()) {
-                            // Update local todos with server-assigned IDs
                             val updatedTodos = todoItems.map { localTodo ->
                                 syncedTodos.find { it.title == localTodo.title && it.description == localTodo.description }
                                     ?: localTodo
                             }
                             todoItems = updatedTodos
-                            Toast.makeText(localContext, "同步成功", Toast.LENGTH_SHORT).show()
+                            serverTodoIds = apiService.fetchUserTodos(userEmail!!).map { it.id }.toSet()
+                            Toast.makeText(localContext, "已上傳到雲端", Toast.LENGTH_SHORT).show()
                         } else {
-                            Toast.makeText(localContext, "同步失敗", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(localContext, "本地檔案上傳失敗", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         Toast.makeText(localContext, "已是最新狀態", Toast.LENGTH_SHORT).show()
@@ -204,11 +220,7 @@ fun TodoApp(context: Context) {
                 userEmail = account.email
                 userPhotoUrl = account.photoUrl?.toString()
                 Log.d("TodoApp", "Signed in as: $userEmail")
-                Toast.makeText(
-                    localContext,
-                    "登入成功: ${account.email}",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(localContext, "登入成功: ${account.email}", Toast.LENGTH_LONG).show()
 
                 val idToken = account.idToken
                 Log.d("TodoApp", "ID Token: $idToken")
@@ -226,19 +238,11 @@ fun TodoApp(context: Context) {
                 12502 -> "登入進行中"
                 else -> "登入失敗 (錯誤代碼: ${e.statusCode})"
             }
-            Toast.makeText(
-                localContext,
-                errorMessage,
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(localContext, errorMessage, Toast.LENGTH_LONG).show()
             userEmail = null
         } catch (e: Exception) {
             Log.e("TodoApp", "Unexpected error during sign-in", e)
-            Toast.makeText(
-                localContext,
-                "登入時發生未預期的錯誤",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(localContext, "登入時發生未預期的錯誤", Toast.LENGTH_LONG).show()
             userEmail = null
         }
     }
@@ -322,25 +326,15 @@ fun TodoApp(context: Context) {
             TopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = "待辦",
-                            fontSize = 20.sp
-                        )
+                        Text(text = "待辦", fontSize = 20.sp)
                         if (userEmail != null) {
-                            Text(
-                                text = userEmail!!,
-                                fontSize = 12.sp,
-                                color = Color.Gray
-                            )
+                            Text(text = userEmail!!, fontSize = 12.sp, color = Color.Gray)
                         }
                     }
                 },
                 actions = {
                     if (userEmail != null) {
-                        IconButton(
-                            onClick = { syncAllTodosToServer() },
-                            enabled = !isSyncing
-                        ) {
+                        IconButton(onClick = { syncAllTodosToServer() }, enabled = !isSyncing) {
                             if (isSyncing) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
@@ -358,30 +352,23 @@ fun TodoApp(context: Context) {
                         }
                     }
 
-                    IconButton(
-                        onClick = {
-                            if (userEmail == null) {
-                                try {
-                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                        .requestIdToken("944913276122-25tq9gsuijcman0dmq8bo9ui9uno35tf.apps.googleusercontent.com")
-                                        .requestEmail()
-                                        .build()
-
-                                    val googleSignInClient = GoogleSignIn.getClient(localContext, gso)
-                                    googleSignInLauncher.launch(googleSignInClient.signInIntent)
-                                } catch (e: Exception) {
-                                    Log.e("TodoApp", "Error initiating sign-in", e)
-                                    Toast.makeText(
-                                        localContext,
-                                        "無法啟動登入流程",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            } else {
-                                showLogoutDialog = true
+                    IconButton(onClick = {
+                        if (userEmail == null) {
+                            try {
+                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                    .requestIdToken("944913276122-25tq9gsuijcman0dmq8bo9ui9uno35tf.apps.googleusercontent.com")
+                                    .requestEmail()
+                                    .build()
+                                val googleSignInClient = GoogleSignIn.getClient(localContext, gso)
+                                googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                            } catch (e: Exception) {
+                                Log.e("TodoApp", "Error initiating sign-in", e)
+                                Toast.makeText(localContext, "無法啟動登入流程", Toast.LENGTH_SHORT).show()
                             }
+                        } else {
+                            showLogoutDialog = true
                         }
-                    ) {
+                    }) {
                         if (userEmail == null) {
                             Icon(
                                 painter = painterResource(R.drawable.google_signin),
@@ -414,9 +401,7 @@ fun TodoApp(context: Context) {
                             }
                         }
                     }
-                    IconButton(
-                        onClick = { showSortDialog = true }
-                    ) {
+                    IconButton(onClick = { showSortDialog = true }) {
                         Icon(
                             painter = painterResource(R.drawable.sort),
                             tint = Color.Unspecified,
@@ -424,9 +409,7 @@ fun TodoApp(context: Context) {
                             modifier = Modifier.size(30.dp)
                         )
                     }
-                    IconButton(
-                        onClick = { showSettingsDialog = true }
-                    ) {
+                    IconButton(onClick = { showSettingsDialog = true }) {
                         Icon(
                             painter = painterResource(R.drawable.settings),
                             tint = Color.Unspecified,
@@ -508,39 +491,36 @@ fun TodoApp(context: Context) {
     ) { innerPadding ->
         if (isLoading) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 CircularProgressIndicator(color = Color.White)
-                Text(
-                    text = "載入中...",
-                    color = Color.White,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
+                Text(text = "載入中...", color = Color.White, modifier = Modifier.padding(top = 16.dp))
             }
         } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.padding(innerPadding)
-            ) {
+            LazyColumn(state = listState, modifier = Modifier.padding(innerPadding)) {
                 if (currentFilterOption == FilterOption.ALL || currentFilterOption == FilterOption.UNCOMPLETED) {
                     items(
                         count = displayUnfinished.size,
                         key = { index -> displayUnfinished[index].id }
                     ) { index ->
+                        val item = displayUnfinished[index]
+                        val isOnline = userEmail != null && serverTodoIds.contains(item.id)
+                        val tag = if (userEmail != null) {
+                            if (isOnline) "線上" else "本地"
+                        } else null
+
                         DraggableItem(
                             index = index,
-                            item = displayUnfinished[index],
+                            item = item,
                             dragDropState = unfinishedDragDropState
-                        ) { item, isDragging ->
+                        ) { dragItem, isDragging ->
                             Card(
-                                todoItem = item,
+                                todoItem = dragItem,
                                 onCheckedChange = { isChecked ->
                                     todoItems = todoItems.map {
-                                        if (it.id == item.id) {
+                                        if (it.id == dragItem.id) {
                                             if (isChecked) {
                                                 NotificationHelper.cancelAllNotifications(context, it)
                                             }
@@ -548,10 +528,9 @@ fun TodoApp(context: Context) {
                                         } else it
                                     }
 
-                                    // Update on server
-                                    if (userEmail != null) {
+                                    if (userEmail != null && isOnline) {
                                         coroutineScope.launch {
-                                            val success = apiService.toggleTodo(userEmail!!, item.id)
+                                            val success = apiService.toggleTodo(userEmail!!, dragItem.id)
                                             if (!success) {
                                                 Toast.makeText(localContext, "更新失敗", Toast.LENGTH_SHORT).show()
                                             }
@@ -559,10 +538,11 @@ fun TodoApp(context: Context) {
                                     }
                                 },
                                 onClick = {
-                                    selectedTodoItem = item
+                                    selectedTodoItem = dragItem
                                     showEditDialog = true
                                 },
-                                isDragging = isDragging
+                                isDragging = isDragging,
+                                syncTag = tag
                             )
                         }
                     }
@@ -584,24 +564,29 @@ fun TodoApp(context: Context) {
                             count = displayFinished.size,
                             key = { index -> displayFinished[index].id }
                         ) { index ->
+                            val item = displayFinished[index]
+                            val isOnline = userEmail != null && serverTodoIds.contains(item.id)
+                            val tag = if (userEmail != null) {
+                                if (isOnline) "線上" else "本地"
+                            } else null
+
                             DraggableItem(
                                 index = index,
-                                item = displayFinished[index],
+                                item = item,
                                 dragDropState = finishedDragDropState
-                            ) { item, isDragging ->
+                            ) { dragItem, isDragging ->
                                 Card(
-                                    todoItem = item,
+                                    todoItem = dragItem,
                                     onCheckedChange = { isChecked ->
                                         todoItems = todoItems.map {
-                                            if (it.id == item.id) {
+                                            if (it.id == dragItem.id) {
                                                 it.copy(isCompleted = isChecked)
                                             } else it
                                         }
 
-                                        // Update on server
-                                        if (userEmail != null) {
+                                        if (userEmail != null && isOnline) {
                                             coroutineScope.launch {
-                                                val success = apiService.toggleTodo(userEmail!!, item.id)
+                                                val success = apiService.toggleTodo(userEmail!!, dragItem.id)
                                                 if (!success) {
                                                     Toast.makeText(localContext, "更新失敗", Toast.LENGTH_SHORT).show()
                                                 }
@@ -609,10 +594,11 @@ fun TodoApp(context: Context) {
                                         }
                                     },
                                     onClick = {
-                                        selectedTodoItem = item
+                                        selectedTodoItem = dragItem
                                         showEditDialog = true
                                     },
-                                    isDragging = isDragging
+                                    isDragging = isDragging,
+                                    syncTag = tag
                                 )
                             }
                         }
@@ -624,71 +610,40 @@ fun TodoApp(context: Context) {
         if (showLogoutDialog) {
             AlertDialog(
                 onDismissRequest = { showLogoutDialog = false },
-                title = {
-                    Text(
-                        text = "確認登出",
-                        color = Color.White
-                    )
-                },
-                text = {
-                    Text(
-                        text = "確定要登出嗎？本地資料將會保留。",
-                        color = Color.White
-                    )
-                },
+                title = { Text(text = "確認登出", color = Color.White) },
+                text = { Text(text = "確定要登出嗎？本地資料將會保留。", color = Color.White) },
                 confirmButton = {
-                    TextButton(
-                        onClick = {
-                            try {
-                                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                    .requestEmail()
-                                    .build()
-                                val googleSignInClient = GoogleSignIn.getClient(localContext, gso)
-                                googleSignInClient.signOut().addOnCompleteListener {
-                                    if (it.isSuccessful) {
-                                        userEmail = null
-                                        userPhotoUrl = null
-                                        todoItems = loadTodoItems(context)
-                                        Toast.makeText(
-                                            localContext,
-                                            "已成功登出",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        Log.d("TodoApp", "Successfully signed out")
-                                    } else {
-                                        Toast.makeText(
-                                            localContext,
-                                            "登出失敗",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        Log.e("TodoApp", "Sign out failed")
-                                    }
+                    TextButton(onClick = {
+                        try {
+                            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                .requestEmail()
+                                .build()
+                            val googleSignInClient = GoogleSignIn.getClient(localContext, gso)
+                            googleSignInClient.signOut().addOnCompleteListener {
+                                if (it.isSuccessful) {
+                                    userEmail = null
+                                    userPhotoUrl = null
+                                    serverTodoIds = emptySet()
+                                    todoItems = loadTodoItems(context)
+                                    Toast.makeText(localContext, "已成功登出", Toast.LENGTH_SHORT).show()
+                                    Log.d("TodoApp", "Successfully signed out")
+                                } else {
+                                    Toast.makeText(localContext, "登出失敗", Toast.LENGTH_SHORT).show()
+                                    Log.e("TodoApp", "Sign out failed")
                                 }
-                            } catch (e: Exception) {
-                                Log.e("TodoApp", "Error during sign-out", e)
-                                Toast.makeText(
-                                    localContext,
-                                    "登出時發生錯誤",
-                                    Toast.LENGTH_SHORT
-                                ).show()
                             }
-                            showLogoutDialog = false
+                        } catch (e: Exception) {
+                            Log.e("TodoApp", "Error during sign-out", e)
+                            Toast.makeText(localContext, "登出時發生錯誤", Toast.LENGTH_SHORT).show()
                         }
-                    ) {
-                        Text(
-                            text = "登出",
-                            color = Color(0xFFCF6679)
-                        )
+                        showLogoutDialog = false
+                    }) {
+                        Text(text = "登出", color = Color(0xFFCF6679))
                     }
                 },
                 dismissButton = {
-                    TextButton(
-                        onClick = { showLogoutDialog = false }
-                    ) {
-                        Text(
-                            text = "取消",
-                            color = Color(0xFF03DAC6)
-                        )
+                    TextButton(onClick = { showLogoutDialog = false }) {
+                        Text(text = "取消", color = Color(0xFF03DAC6))
                     }
                 },
                 containerColor = Color(0xFF2C2C2C)
@@ -699,49 +654,33 @@ fun TodoApp(context: Context) {
             TodoDialog(
                 onDismiss = { showDialog = false },
                 onConfirm = { title: String, description: String, notificationTimes: List<Long> ->
-                    Log.d("TodoApp", "=== CREATE TODO STARTED ===")
-                    Log.d("TodoApp", "Title: $title")
-                    Log.d("TodoApp", "Description: $description")
-                    Log.d("TodoApp", "Notification Times: $notificationTimes")
-                    Log.d("TodoApp", "User Email: $userEmail")
-
                     val newItem = TodoItem(
                         title = title,
                         description = description,
-                        id = 0, // Server will assign ID
+                        id = 0,
                         notificationTimes = notificationTimes
                     )
 
                     if (userEmail != null) {
-                        Log.d("TodoApp", "User is logged in, creating on server...")
-                        // Create on server first
                         coroutineScope.launch {
                             try {
-                                Log.d("TodoApp", "Calling apiService.createTodo()")
                                 val createdItem = apiService.createTodo(userEmail!!, newItem)
-                                Log.d("TodoApp", "API Response: $createdItem")
-
                                 if (createdItem != null) {
-                                    Log.d("TodoApp", "Todo created successfully with ID: ${createdItem.id}")
                                     todoItems = todoItems + createdItem
+                                    serverTodoIds = serverTodoIds + createdItem.id
 
                                     if (notificationTimes.isNotEmpty()) {
                                         NotificationHelper.scheduleNotifications(context, createdItem, isMuted)
                                     }
-
                                     Toast.makeText(localContext, "已建立並同步", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    Log.e("TodoApp", "API returned null - creation failed")
                                     Toast.makeText(localContext, "建立失敗: API 返回空值", Toast.LENGTH_LONG).show()
                                 }
                             } catch (e: Exception) {
-                                Log.e("TodoApp", "Exception during todo creation", e)
                                 Toast.makeText(localContext, "建立失敗: ${e.message}", Toast.LENGTH_LONG).show()
                             }
                         }
                     } else {
-                        Log.d("TodoApp", "User not logged in, creating locally only")
-                        // Create locally only
                         val newId = (todoItems.maxOfOrNull { it.id } ?: 0) + 1
                         val localItem = newItem.copy(id = newId)
                         todoItems = todoItems + localItem
@@ -749,9 +688,7 @@ fun TodoApp(context: Context) {
                         if (notificationTimes.isNotEmpty()) {
                             NotificationHelper.scheduleNotifications(context, localItem, isMuted)
                         }
-                        Log.d("TodoApp", "Local todo created with ID: $newId")
                     }
-
                     showDialog = false
                 },
                 recurringCount = recurringCount
@@ -767,72 +704,42 @@ fun TodoApp(context: Context) {
                     currentFilterOption = FilterOption.ALL
                     showFilterDialog = false
                 },
-                title = {
-                    Text(
-                        text = "篩選",
-                        color = Color.White
-                    )
-                },
+                title = { Text(text = "篩選", color = Color.White) },
                 text = {
                     Column {
                         FilterOptionItem(
                             text = "全部",
                             isSelected = tempFilterOption == FilterOption.ALL,
-                            onClick = {
-                                tempFilterOption = FilterOption.ALL
-                            }
+                            onClick = { tempFilterOption = FilterOption.ALL }
                         )
                         FilterOptionItem(
                             text = "完成",
                             isSelected = tempFilterOption == FilterOption.COMPLETED,
-                            onClick = {
-                                tempFilterOption = FilterOption.COMPLETED
-                            }
+                            onClick = { tempFilterOption = FilterOption.COMPLETED }
                         )
                         FilterOptionItem(
                             text = "未完成",
                             isSelected = tempFilterOption == FilterOption.UNCOMPLETED,
-                            onClick = {
-                                tempFilterOption = FilterOption.UNCOMPLETED
-                            }
+                            onClick = { tempFilterOption = FilterOption.UNCOMPLETED }
                         )
                     }
                 },
                 confirmButton = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        TextButton(
-                            onClick = {
-                                showDeleteConfirmation = true
-                            }
-                        ) {
-                            Text(
-                                text = "全選並刪除",
-                                color = Color(0xFFCF6679)
-                            )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { showDeleteConfirmation = true }) {
+                            Text(text = "全選並刪除", color = Color(0xFFCF6679))
                         }
-                        TextButton(
-                            onClick = {
-                                currentFilterOption = FilterOption.ALL
-                                showFilterDialog = false
-                            }
-                        ) {
-                            Text(
-                                text = "取消",
-                                color = Color(0xFF03DAC6)
-                            )
+                        TextButton(onClick = {
+                            currentFilterOption = FilterOption.ALL
+                            showFilterDialog = false
+                        }) {
+                            Text(text = "取消", color = Color(0xFF03DAC6))
                         }
-                        TextButton(
-                            onClick = {
-                                currentFilterOption = tempFilterOption
-                                showFilterDialog = false
-                            }
-                        ) {
-                            Text(
-                                text = "套用",
-                                color = Color(0xFF03DAC6)
-                            )
+                        TextButton(onClick = {
+                            currentFilterOption = tempFilterOption
+                            showFilterDialog = false
+                        }) {
+                            Text(text = "套用", color = Color(0xFF03DAC6))
                         }
                     }
                 },
@@ -854,12 +761,7 @@ fun TodoApp(context: Context) {
 
                 AlertDialog(
                     onDismissRequest = { showDeleteConfirmation = false },
-                    title = {
-                        Text(
-                            "確認刪除",
-                            color = Color.White
-                        )
-                    },
+                    title = { Text("確認刪除", color = Color.White) },
                     text = {
                         Text(
                             "確定要刪除所有「${categoryText}」的待辦事項嗎？（共 ${itemsToDelete.size} 項）",
@@ -873,7 +775,6 @@ fun TodoApp(context: Context) {
                                     NotificationHelper.cancelAllNotifications(context, item)
                                 }
 
-                                // Delete from server if logged in
                                 if (userEmail != null) {
                                     coroutineScope.launch {
                                         when (tempFilterOption) {
@@ -881,6 +782,7 @@ fun TodoApp(context: Context) {
                                                 val success = apiService.deleteAllTodos(userEmail!!)
                                                 if (success) {
                                                     todoItems = emptyList()
+                                                    serverTodoIds = emptySet()
                                                 } else {
                                                     Toast.makeText(localContext, "刪除失敗", Toast.LENGTH_SHORT).show()
                                                 }
@@ -894,6 +796,7 @@ fun TodoApp(context: Context) {
                                                     FilterOption.UNCOMPLETED -> finishedItems
                                                     else -> todoItems
                                                 }
+                                                serverTodoIds = apiService.fetchUserTodos(userEmail!!).map { it.id }.toSet()
                                             }
                                         }
                                     }
@@ -918,13 +821,8 @@ fun TodoApp(context: Context) {
                         }
                     },
                     dismissButton = {
-                        TextButton(
-                            onClick = { showDeleteConfirmation = false }
-                        ) {
-                            Text(
-                                text = "取消",
-                                color = Color(0xFFB0B0B0)
-                            )
+                        TextButton(onClick = { showDeleteConfirmation = false }) {
+                            Text(text = "取消", color = Color(0xFFB0B0B0))
                         }
                     },
                     containerColor = Color(0xFF1E1E1E),
@@ -937,12 +835,7 @@ fun TodoApp(context: Context) {
         if (showSortDialog) {
             AlertDialog(
                 onDismissRequest = { showSortDialog = false },
-                title = {
-                    Text(
-                        text = "排序方式",
-                        color = Color.White
-                    )
-                },
+                title = { Text(text = "排序方式", color = Color.White) },
                 text = {
                     Column {
                         SortOptionItem(
@@ -988,13 +881,8 @@ fun TodoApp(context: Context) {
                     }
                 },
                 confirmButton = {
-                    TextButton(
-                        onClick = { showSortDialog = false }
-                    ) {
-                        Text(
-                            text = "取消",
-                            color = Color(0xFF03DAC6)
-                        )
+                    TextButton(onClick = { showSortDialog = false }) {
+                        Text(text = "取消", color = Color(0xFF03DAC6))
                     }
                 },
                 containerColor = Color(0xFF2C2C2C)
@@ -1033,7 +921,6 @@ fun TodoApp(context: Context) {
                         NotificationHelper.scheduleNotifications(context, updatedItem, isMuted)
                     }
 
-                    // Update on server
                     if (userEmail != null) {
                         coroutineScope.launch {
                             val success = apiService.updateTodo(userEmail!!, updatedItem)
@@ -1053,11 +940,11 @@ fun TodoApp(context: Context) {
 
                     todoItems = todoItems.filter { it.id != itemToDelete.id }
 
-                    // Delete from server
                     if (userEmail != null) {
                         coroutineScope.launch {
                             val success = apiService.deleteTodo(userEmail!!, itemToDelete.id)
                             if (success) {
+                                serverTodoIds = serverTodoIds - itemToDelete.id
                                 Toast.makeText(localContext, "已刪除", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(localContext, "刪除失敗", Toast.LENGTH_SHORT).show()
