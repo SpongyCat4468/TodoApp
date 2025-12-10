@@ -68,6 +68,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.launch
+import com.example.todoapp.widget.WidgetUpdater
 
 enum class FilterOption {
     ALL,
@@ -130,6 +131,7 @@ fun TodoApp(context: Context) {
 
     LaunchedEffect(todoItems) {
         saveTodoItems(context, todoItems)
+        WidgetUpdater.updateAllWidgets(context)
     }
 
     LaunchedEffect(todoItems) {

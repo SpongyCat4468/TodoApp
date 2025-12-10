@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">TodoApp</string>
-    <string name="widget_description">顯示您的待辦事項</string>
+    <string name="widget_description_small">顯示待辦事項數量</string>
+    <string name="widget_description_resizable">顯示待辦事項列表 (可調整大小)</string>
+    <string name="widget_description_large">顯示完整待辦事項列表</string>
 </resources>
